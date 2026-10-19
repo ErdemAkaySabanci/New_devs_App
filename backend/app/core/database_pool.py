@@ -1,6 +1,5 @@
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import QueuePool
 import logging
 from ..config import settings
 
@@ -14,12 +13,12 @@ class DatabasePool:
     async def initialize(self):
         """Initialize database connection pool"""
         try:
-            # Create async engine with connection pooling
-            database_url = f"postgresql+asyncpg://{settings.supabase_db_user}:{settings.supabase_db_password}@{settings.supabase_db_host}:{settings.supabase_db_port}/{settings.supabase_db_name}"
-            
+            # Create async engine with connection pooling (DATABASE_URL is the configured source of truth)
+            database_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            # Default pool for async engines is AsyncAdaptedQueuePool (QueuePool is not async-compatible)
             self.engine = create_async_engine(
                 database_url,
-                poolclass=QueuePool,
                 pool_size=20,  # Number of connections to maintain
                 max_overflow=30,  # Additional connections when needed
                 pool_pre_ping=True,  # Validate connections
@@ -44,8 +43,10 @@ class DatabasePool:
         """Close database connections"""
         if self.engine:
             await self.engine.dispose()
-    
-    async def get_session(self) -> AsyncSession:
+        self.engine = None
+        self.session_factory = None
+
+    def get_session(self) -> AsyncSession:
         """Get database session from pool"""
         if not self.session_factory:
             raise Exception("Database pool not initialized")

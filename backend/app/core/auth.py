@@ -123,7 +123,9 @@ async def authenticate_request(
                         self.app_metadata = payload.get('app_metadata', {})
                         self.user_metadata = payload.get('user_metadata', {})
                         self.raw_app_metadata = payload.get('app_metadata', {})
-                        
+                        # tenant_id is part of the signed token (top-level or in app_metadata)
+                        self.tenant_id = payload.get('tenant_id') or self.app_metadata.get('tenant_id')
+
                 user = MockUser(payload)
                 
             except JWTError:
@@ -252,8 +254,10 @@ async def authenticate_request(
         logger.info(f"==================== TENANT ID EXTRACTION ====================")
         logger.info(f"User: {user.email} (ID: {user.id})")
 
-        # Use TenantResolver for comprehensive tenant resolution
-        tenant_id = await TenantResolver.resolve_tenant_id(token=token, user_id=user.id, user_email=user.email)
+        # Prefer the tenant from the verified token; fall back to the resolver only when it's absent
+        tenant_id = getattr(user, "tenant_id", None) or await TenantResolver.resolve_tenant_id(
+            token=token, user_id=user.id, user_email=user.email
+        )
 
         # If we found a tenant_id and it's not in the user's metadata, update it for next time
         current_tenant_in_metadata = None
